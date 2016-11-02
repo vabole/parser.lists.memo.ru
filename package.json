@@ -1,0 +1,19 @@
+{
+  "name": "scraping.lists.memo.ru",
+  "version": "0.0.1",
+  "description": "scrapping lists.memo.ru",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "scraping"
+  ],
+  "author": "vabole",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^0.22.0",
+    "request-promise": "^4.1.1",
+    "require": "^2.4.20"
+  }
+}
