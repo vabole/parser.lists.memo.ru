@@ -18,6 +18,5 @@
     "request-promise": "^4.1.1",
     "request-promise-native": "^1.0.3",
     "throttled-request": "^0.1.1",
-    "tress": "^1.0.3"
   }
 }
