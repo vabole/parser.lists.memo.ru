@@ -1,100 +1,87 @@
 "use strict";
 
-const rp = require('request-promise-native');
+const rp = require('./throttle');
 const resolveUrl = require('url').resolve;
 const cheerio  = require('cheerio');
 
-const startingPage = 'http://lists.memo.ru/index1.htm';
 const encoding ='win1251';
 
-let people = [];
+const PromisePool = require('es6-promise-pool');
 
-let options =  {
-    uri: startingPage,
-    encoding: null
-};
-
-rp(options)
-    .then(function(body){
-    return extractLinksFromMainPage(fixEncoding(body));
-})
-
-    // process all links to sublists
-    .then( links => {
-        // loging the link being processed
-         console.log(links);
-        return httpGetLinks(links)
-    }).catch(errorHandler)
-    .then(bodys => Promise.all(bodys))
-    .then(bodys => bodys.map(extractLinksTolists))
-
-    // flattening the array
-    .then(linksArrayWithSubArrays => {
-        //console.log(linksArrayWithSubArrays);
-        let allLinks = [];
-        linksArrayWithSubArrays.forEach(linksArray => {
-            allLinks = allLinks.concat((linksArray));
-        });
-        return allLinks;
-    })
-    .then(links => httpGetLinks(links))
-    .then(pages => {
-        pages.forEach(extractNamesDataFromPage);
-    })
-
-    .then(writeOutData)
-
-    .catch(error => {
-        console.log(`${error.name}: ${error.message} \n${error.stack}`);
-        console.log(`${error} \n${fixEncoding(error.error)}`);
-    });
-
-
-/***
- * extracting links to the pages with lists of names
- * @param $
- * @returns {Array}
- */
-function extractLinksFromMainPage(body){
-    let $ = cheerio.load(body);
-    let links = [];
-    $('.alefbet a')
-        .each(function () {
-            links.push( resolveUrl( startingPage, $(this).attr('href')))
-        });
-
-    return links;
+let promiseProducer = function* () {
+   for(let i = 22; i <= 38; i++){
+        yield getPart(i);
+    }
 }
 
-function httpGetLinks(uris) {
-    function accumulate(uris, i, bodies){
-        if (i >= uris.length){
-            return bodies;
+const promiseIterator = promiseProducer();
+const pool = new PromisePool(promiseIterator, 5);
+pool.start()
+    .then(() => console.log(`Complete`));
+
+
+//
+// (async function para(f, n){
+//     let result = [];
+//     let start = 17;
+//     for (let i = 0; i < n; i++){
+//         result.push(f(start + i));
+//     }
+//     return await Promise.all(result);
+// }(getPart, 5))
+
+function* generateUrls(d){
+    const root = 'http://lists.memo.ru/d';
+    let max = 500;
+    if ( d < 1 || d < 1){
+        return;
+    }
+    if ( d == 38){
+        max = 475;
+    }
+    for ( let i = 1; i <= max ; i++){
+        yield root + `${d}/f${i}.htm`
+    }
+}
+
+async function getNamesFromPage (url){
+        try{
+            var body = await rp(url);
+        }catch(e){
+            try {
+                var body = await rp(url);
+            }catch(e){
+                throw new Error(e);
+            }
         }
 
-        options.uri = uris[i];
-        console.log(options.uri);
-        return rp(options).then(body => {
-            return accumulate(uris, ++i, bodies.concat(body));
-        }).catch(errorHandler)
-    }
-
-    return accumulate(uris, 0, []);
+    let people = extractNamesDataFromPage(body);
+    return people;
 }
 
-function extractLinksTolists(body) {
-    let $ = cheerio.load(fixEncoding(body));
-    let links = [];
-    $('.doppoisk a').each( function(){
-        const onclickJmpParameters = $(this).attr('onclick').slice(5, -1).split(',');
-        let uri = `d${+onclickJmpParameters[0]}/f${+onclickJmpParameters[1]}.htm`;
-        links.push(resolveUrl(startingPage, uri));
-    });
-    return links;
+const fs = require('fs');
+
+async function getPart(d){
+    let peopleFile = [];
+    for (let url of generateUrls(d)){
+        let people = await getNamesFromPage(url);
+        peopleFile.push(people);
+    }
+    await writeOut(peopleFile, d);
+}
+
+function writeOut (data, fileName){
+    fs.writeFile(`./data/${fileName}.json`, JSON.stringify(data), (error) => {
+        if (error) {
+            console.log(`Failed to create file ${fileName}`);
+            throw new Error(err);
+        }
+    })
 }
 
 function extractNamesDataFromPage(body) {
-    let $ = cheerio.load(fixEncoding(body));
+    let people = [];
+    const $ = cheerio.load(fixEncoding(body));
 
     $('.list-right li').each(function(){
         let person = {};
@@ -104,17 +91,10 @@ function extractNamesDataFromPage(body) {
 
         people.push(person);
     });
+    return people;
 }
 
-function writeOutData() {
-    require('fs').writeFileSync('./data/people.json', JSON.stringify(people, null, 4));
-}
-
-const iconv = require('iconv-lite');
 function fixEncoding(binary) {
+    const iconv = require('iconv-lite');
     return iconv.decode(binary, encoding);
-}
-
-function errorHandler(error) {
-    console.log(error.stack);
 }
